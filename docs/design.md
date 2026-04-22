@@ -2,8 +2,9 @@
 
 作成日: 2026-04-19
 関連: [requirements.md](./requirements.md), [adr/README.md](./adr/README.md)
+仕様: [openapi.yaml](./openapi.yaml), [ws-schema.json](./ws-schema.json), [whisper-service-api.yaml](./whisper-service-api.yaml)
 
-本書は決定済みアーキテクチャに基づく具体的な構造定義。判断の根拠や代替案は [adr/README.md](./adr/README.md) を参照。
+本書は決定済みアーキテクチャに基づく具体的な構造定義。判断の根拠や代替案は [adr/README.md](./adr/README.md) を参照。API やメッセージの厳密な形状は上記の仕様ファイル群に集約している。
 
 ## 1. システム構成図
 
@@ -207,29 +208,12 @@ user (fresh):
 
 ## 6. WebSocket プロトコル
 
-### Client → Server
+メッセージの厳密な形状は [`ws-schema.json`](./ws-schema.json) に集約（JSON Schema Draft 2020-12、`type` フィールドによる discriminated union）。本節ではエンドポイントと概要のみ扱う。
 
-```
-{ "type": "hello",        "session_id": "..." }
-{ "type": "audio_chunk",  "seq": 42, "pcm_b64": "..." }
-{ "type": "qa_request",   "text": "この話のRFCは?" }
-{ "type": "bye" }
-```
-
-### Server → Client
-
-```
-{ "type": "partial_transcript",   "text": "kubernetes offers..." }
-{ "type": "committed_sentence",   "sentence_id": 42,
-                                  "text_en": "...", "text_ja": "..." }
-{ "type": "glossary_update",      "term": "etcd", "definition_ja": "..." }
-{ "type": "background_note",      "body": "...", "related": [42,43] }
-{ "type": "qa_response",          "body": "..." }
-{ "type": "cost_update",          "usd": 0.012 }
-{ "type": "error",                "message": "..." }
-```
-
-バイナリフレームは使わず JSON + base64 で統一。
+- エンドポイント: `GET /sessions/{session_id}/ws`（HTTP から Upgrade）
+- Client → Server: `hello`, `audio_chunk`, `qa_request`, `bye`
+- Server → Client: `partial_transcript`, `committed_sentence`, `glossary_update`, `background_note`, `qa_response`, `cost_update`, `error`
+- バイナリフレームは使わず、PCM は base64 埋め込み JSON で統一
 
 ## 7. 事前コンテキスト投入
 

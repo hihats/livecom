@@ -1,0 +1,219 @@
+openapi: 3.1.0
+info:
+  title: livecom HTTP API
+  version: 0.1.0
+  description: |
+    ローカルホストで動作する backend の HTTP インターフェース仕様。
+    WebSocket メッセージは [ws-schema.json](./ws-schema.json) で別途定義する。
+    whisper-service の内部 API は [whisper-service-api.yaml](./whisper-service-api.yaml) を参照。
+
+servers:
+  - url: http://localhost:8000
+    description: Local backend (docker compose)
+
+tags:
+  - name: session
+  - name: ingest
+  - name: qa
+  - name: export
+
+paths:
+  /sessions:
+    post:
+      tags: [session]
+      operationId: createSession
+      summary: セッション作成（事前コンテキスト投入込み）
+      description: |
+        アブストラクト・登壇者プロフィール・スライド PDF を受け取り、
+        初期 glossary のウォームアップを実施してから セッション ID を返す。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [abstract]
+              properties:
+                title:
+                  type: string
+                  description: 講演タイトル
+                abstract:
+                  type: string
+                  description: 講演アブストラクト（必須）
+                speaker_bio:
+                  type: string
+                  description: 登壇者プロフィール
+                slides:
+                  type: string
+                  format: binary
+                  description: スライド PDF（任意）
+      responses:
+        '201':
+          description: 作成完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /sessions/{session_id}/ingest-file:
+    post:
+      tags: [ingest]
+      operationId: ingestRecordingFile
+      summary: 録音/録画ファイルのバッチ処理投入
+      description: |
+        mp4 / mp3 / wav などを multipart で受け取り、ffmpeg で 16kHz mono WAV に正規化したあと、
+        whisper-service にバッチ送信する。非同期処理のため 202 を返す。
+        進捗・結果は WebSocket 経由で通知される。
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: mp4 / mp3 / wav / m4a など
+      responses:
+        '202':
+          description: 受理。バックグラウンドで処理中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sessions/{session_id}/qa:
+    post:
+      tags: [qa]
+      operationId: submitQaViaHttp
+      summary: Q&A 質問（HTTP 経路）
+      description: |
+        WebSocket 経路（type="qa_request"）の代替。WebSocket 未接続時や単発質問に使う。
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QaRequest'
+      responses:
+        '200':
+          description: 回答
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QaResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sessions/{session_id}/export:
+    get:
+      tags: [export]
+      operationId: exportSessionMarkdown
+      summary: セッションの Markdown ダウンロード
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Markdown 本文
+          content:
+            text/markdown:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    SessionCreated:
+      type: object
+      required: [id, started_at, glossary_terms_added]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        started_at:
+          type: integer
+          description: Unix epoch seconds
+        glossary_terms_added:
+          type: integer
+          description: 事前コンテキストから抽出した初期 glossary 件数
+
+    IngestAccepted:
+      type: object
+      required: [job_id]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+
+    QaRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+
+    QaResponse:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          description: 日本語の回答本文
+        related_sentence_ids:
+          type: array
+          items:
+            type: integer
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+
+  responses:
+    BadRequest:
+      description: リクエスト不正
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: セッションが存在しない
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+# 備考:
+# - WebSocket エンドポイント（GET /sessions/{session_id}/ws で Upgrade）は
+#   OpenAPI 3.1 で正式サポートされていないためこの仕様には含まれない。
+#   ws-schema.json を参照。
+# - 認証は未設定（ローカル単一ユーザ、ADR-0001）。
