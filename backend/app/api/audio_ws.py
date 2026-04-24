@@ -23,7 +23,19 @@ async def audio_ws(websocket: WebSocket, session_id: str) -> None:
             if msg_type == "hello":
                 logger.info("hello session_id=%s", msg.get("session_id"))
             elif msg_type == "audio_chunk":
-                chunk = base64.b64decode(msg["pcm_b64"])
+                pcm_b64 = msg.get("pcm_b64")
+                if not isinstance(pcm_b64, str):
+                    await websocket.send_json(
+                        {"type": "error", "message": "audio_chunk missing pcm_b64 field"}
+                    )
+                    continue
+                try:
+                    chunk = base64.b64decode(pcm_b64)
+                except Exception:
+                    await websocket.send_json(
+                        {"type": "error", "message": "invalid base64 in pcm_b64"}
+                    )
+                    continue
                 total_bytes += len(chunk)
                 logger.info(
                     "audio_chunk seq=%s bytes=%d total=%d",

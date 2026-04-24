@@ -12,6 +12,18 @@ const errorMsg = ref('')
 let ws: WsClient | null = null
 let capture: AudioCapture | null = null
 
+async function handleDisconnect(errorState = false) {
+  recording.value = false
+  if (errorState) {
+    status.value = 'error'
+  } else if (status.value !== 'idle') {
+    status.value = 'idle'
+  }
+  await capture?.stop()
+  capture = null
+  ws = null
+}
+
 async function start() {
   if (recording.value) return
   status.value = 'connecting'
@@ -26,10 +38,11 @@ async function start() {
         ws?.send({ type: 'hello', session_id: sessionId })
       },
       onClose: () => {
-        if (status.value === 'recording') status.value = 'idle'
+        void handleDisconnect()
       },
       onError: (ev) => {
         console.error('ws error', ev)
+        void handleDisconnect(true)
       },
     })
     await ws.connect()
