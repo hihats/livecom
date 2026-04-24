@@ -16,7 +16,11 @@ export class AudioCapture {
     this.workletNode = new AudioWorkletNode(this.context, 'pcm-processor')
     this.workletNode.port.onmessage = (ev) =>
       this.onChunk(ev.data as ArrayBuffer)
+    const silentGain = this.context.createGain()
+    silentGain.gain.value = 0
     this.source.connect(this.workletNode)
+    this.workletNode.connect(silentGain)
+    silentGain.connect(this.context.destination)
   }
 
   async stop(): Promise<void> {
