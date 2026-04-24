@@ -1,0 +1,29 @@
+[project]
+name = "livecom-whisper-service"
+version = "0.1.0"
+description = "Host-side Whisper transcription microservice (Metal / MLX accelerated)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "faster-whisper>=1.0.0",
+    "numpy>=1.26",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"

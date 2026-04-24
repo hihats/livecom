@@ -1,0 +1,135 @@
+openapi: 3.1.0
+info:
+  title: whisper-service Internal API
+  version: 0.1.0
+  description: |
+    whisper-service（ホストネイティブプロセス）が公開する内部 HTTP API。
+    backend（docker container）から `host.docker.internal:9000` 経由で呼び出される。
+
+    設計根拠:
+    - ADR-0014: Docker 採用と Whisper サービスのホスト分離
+    - ADR-0017: Whisper モデル配置と STT 通信形式
+
+servers:
+  - url: http://host.docker.internal:9000
+    description: From backend container
+  - url: http://127.0.0.1:9000
+    description: Direct from host
+
+paths:
+  /transcribe:
+    post:
+      operationId: transcribe
+      summary: PCM 音声を書き起こす
+      description: |
+        16kHz mono Int16 PCM を binary body で受け取り、faster-whisper で書き起こす。
+        部分結果（streaming）は提供しない（ADR-0017）。
+      parameters:
+        - in: query
+          name: language
+          schema:
+            type: string
+            default: en
+            description: ISO 639-1 言語コード。"auto" で自動検出。
+        - in: query
+          name: sample_rate
+          schema:
+            type: integer
+            default: 16000
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: Int16 PCM バイト列（little-endian, mono）
+      responses:
+        '200':
+          description: 書き起こし結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranscriptionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          description: モデル未ロード・ロード中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /healthz:
+    get:
+      operationId: healthz
+      summary: 稼働確認
+      responses:
+        '200':
+          description: 稼働中
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, model_loaded]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  model_loaded:
+                    type: boolean
+                  model_name:
+                    type: string
+                    example: large-v3
+
+components:
+  schemas:
+    TranscriptionResult:
+      type: object
+      required: [text, segments]
+      properties:
+        text:
+          type: string
+          description: セグメントを連結した全体テキスト
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Segment'
+        language:
+          type: string
+          description: 検出または指定された言語コード
+        duration_s:
+          type: number
+          description: 入力音声の総秒数
+
+    Segment:
+      type: object
+      required: [text, start_ms, end_ms]
+      properties:
+        text:
+          type: string
+        start_ms:
+          type: integer
+          description: PCM の先頭からの相対時間（ms）
+        end_ms:
+          type: integer
+        no_speech_prob:
+          type: number
+          description: 0.0〜1.0、音声が発話でない確率
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+
+  responses:
+    BadRequest:
+      description: リクエスト不正（空 body、PCM サイズ不整合など）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

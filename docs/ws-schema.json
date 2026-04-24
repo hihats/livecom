@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hihats/livecom/docs/ws-schema.json",
+  "title": "livecom WebSocket messages",
+  "description": "WebSocket エンドポイント `GET /sessions/{session_id}/ws` で送受信する discriminated union メッセージ。type フィールドで判別。",
+
+  "$defs": {
+    "Hello": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "session_id"],
+      "properties": {
+        "type": { "const": "hello" },
+        "session_id": { "type": "string", "format": "uuid" }
+      }
+    },
+
+    "AudioChunk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "seq", "pcm_b64"],
+      "properties": {
+        "type": { "const": "audio_chunk" },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "クライアント側連番。再接続時のロスト検知に使用"
+        },
+        "pcm_b64": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "description": "16kHz mono Int16 PCM、通常 200ms 分 (6400 bytes) を base64 エンコード"
+        }
+      }
+    },
+
+    "QaRequestMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "qa_request" },
+        "text": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "Bye": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "bye" }
+      }
+    },
+
+    "ClientMessage": {
+      "description": "クライアント → サーバ",
+      "oneOf": [
+        { "$ref": "#/$defs/Hello" },
+        { "$ref": "#/$defs/AudioChunk" },
+        { "$ref": "#/$defs/QaRequestMessage" },
+        { "$ref": "#/$defs/Bye" }
+      ]
+    },
+
+    "PartialTranscript": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "partial_transcript" },
+        "text": {
+          "type": "string",
+          "description": "確定前の英語書き起こし。VAD が話者継続と判定している間に逐次更新"
+        }
+      }
+    },
+
+    "CommittedSentence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sentence_id", "text_en"],
+      "properties": {
+        "type": { "const": "committed_sentence" },
+        "sentence_id": { "type": "integer" },
+        "text_en": { "type": "string" },
+        "text_ja": {
+          "type": ["string", "null"],
+          "description": "翻訳未完了の段階では null、LLM 完了後に更新通知"
+        },
+        "ts_start_ms": { "type": "integer" },
+        "ts_end_ms": { "type": "integer" }
+      }
+    },
+
+    "GlossaryUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "term", "definition_ja"],
+      "properties": {
+        "type": { "const": "glossary_update" },
+        "term": { "type": "string" },
+        "definition_ja": { "type": "string" },
+        "first_seen_sentence_id": { "type": "integer" }
+      }
+    },
+
+    "BackgroundNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "body"],
+      "properties": {
+        "type": { "const": "background_note" },
+        "body": { "type": "string" },
+        "related_sentence_ids": {
+          "type": "array",
+          "items": { "type": "integer" }
+        }
+      }
+    },
+
+    "QaResponseMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "body"],
+      "properties": {
+        "type": { "const": "qa_response" },
+        "body": { "type": "string" },
+        "related_sentence_ids": {
+          "type": "array",
+          "items": { "type": "integer" }
+        }
+      }
+    },
+
+    "CostUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "usd"],
+      "properties": {
+        "type": { "const": "cost_update" },
+        "usd": {
+          "type": "number",
+          "description": "セッション累計コスト (USD)"
+        }
+      }
+    },
+
+    "ErrorMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message"],
+      "properties": {
+        "type": { "const": "error" },
+        "message": { "type": "string" },
+        "code": { "type": "string" }
+      }
+    },
+
+    "ServerMessage": {
+      "description": "サーバ → クライアント",
+      "oneOf": [
+        { "$ref": "#/$defs/PartialTranscript" },
+        { "$ref": "#/$defs/CommittedSentence" },
+        { "$ref": "#/$defs/GlossaryUpdate" },
+        { "$ref": "#/$defs/BackgroundNote" },
+        { "$ref": "#/$defs/QaResponseMessage" },
+        { "$ref": "#/$defs/CostUpdate" },
+        { "$ref": "#/$defs/ErrorMessage" }
+      ]
+    }
+  }
+}

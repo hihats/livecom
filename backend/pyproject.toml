@@ -1,0 +1,37 @@
+[project]
+name = "livecom-backend"
+version = "0.1.0"
+description = "livecom backend: FastAPI orchestrator for STT, LLM, and session storage"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.12",
+    "anthropic>=0.40",
+    "httpx>=0.28",
+    "pydantic>=2.9",
+    "pypdf>=5.0",
+    "onnxruntime>=1.19",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
